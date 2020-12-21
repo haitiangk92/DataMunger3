@@ -4,20 +4,36 @@ import java.io.BufferedReader;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
+import java.util.ArrayList;
 
 import com.stackroute.datamunger.query.DataTypeDefinitions;
 import com.stackroute.datamunger.query.Header;
 
 public class CsvQueryProcessor extends QueryProcessingEngine {
 	private BufferedReader bReader;
+	private ArrayList<String> lines;
+	private int currentRow;
+
+	public CsvQueryProcessor() {
+		bReader = null;
+		lines = null;
+		currentRow = 0;
+	}
 
 	// Parameterized constructor to initialize filename
 	public CsvQueryProcessor(String fileName) throws FileNotFoundException {
 		bReader = new BufferedReader(new FileReader(fileName));
+		currentRow = 1;
+		lines = new ArrayList<>();
+
 		try {
-			bReader.mark(1000);
+			String line = bReader.readLine();
+
+			while (line != null) {
+				lines.add(line);
+				line = bReader.readLine();
+			}
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 	}
@@ -30,14 +46,18 @@ public class CsvQueryProcessor extends QueryProcessingEngine {
 
 	@Override
 	public Header getHeader() throws IOException {
-		//Reset to beginning of buffer
-		bReader.reset();
-		
-		// read the first line
-		String headline = bReader.readLine();
+		String[] headers = null;
+
+		try {
+			// read the first line
+			String headline = lines.get(0);
+			headers = headline.split(",");
+		} catch (IndexOutOfBoundsException e) {
+			throw new IOException();
+		}
 
 		// populate the header object with the String array containing the header names
-		return new Header(headline.split(","));
+		return new Header(headers);
 	}
 
 	/**
@@ -45,7 +65,12 @@ public class CsvQueryProcessor extends QueryProcessingEngine {
 	 */
 
 	@Override
-	public void getDataRow() {
+	public String getDataRow() {
+		if (currentRow >= lines.size()) {
+			return "EOF";
+		}
+
+		return lines.get(currentRow++);
 	}
 
 	/*
@@ -60,29 +85,29 @@ public class CsvQueryProcessor extends QueryProcessingEngine {
 
 	@Override
 	public DataTypeDefinitions getColumnType() throws IOException {
-		//Reset to beginning of buffer
-		bReader.reset();
-		
-		//Read off the first line
-		int numFields = bReader.readLine().split(",").length;
-		String[] dataLine = bReader.readLine().split(",");
-		
-		String[] defs = new String[numFields];
-		
-		for(int i = 0; i < numFields; i++) {
-			try {
-				Integer.parseInt(dataLine[i]);
-				defs[i] = "Integer";
-			}catch(Exception e) {
+		// Read off the first line
+		int numFields = lines.get(0).length();
+		String[] definitions = new String[numFields];
+
+		try {
+			String[] dataLine = lines.get(1).split(",");
+
+			for (int i = 0; i < numFields; i++) {
 				try {
-				Double.parseDouble(dataLine[i]);
-				defs[i] = "Double";
-				}catch(Exception ex) {
-					defs[i] = (i >= dataLine.length || dataLine[i].equals("")) ? "Unknown":"String";
+					Integer.parseInt(dataLine[i]);
+					definitions[i] = "Integer";
+				} catch (Exception e) {
+					try {
+						Double.parseDouble(dataLine[i]);
+						definitions[i] = "Double";
+					} catch (Exception ex) {
+						definitions[i] = (i >= dataLine.length || dataLine[i].equals("")) ? "Unknown" : "String";
+					}
 				}
 			}
+		} catch (IndexOutOfBoundsException e) {
+			throw new IOException();
 		}
-		
-		return new DataTypeDefinitions(defs);
+		return new DataTypeDefinitions(definitions);
 	}
 }
